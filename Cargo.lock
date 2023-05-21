@@ -117,6 +117,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a2dd5a6fe8c6e3502f568a6353e5273bbb15193ad9a89e457b9970798efbea1"
 
 [[package]]
+name = "cliform"
+version = "0.1.0"
+
+[[package]]
 name = "colorama"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,6 +225,7 @@ version = "0.1.0"
 dependencies = [
  "atty",
  "clap",
+ "cliform",
  "colorama",
  "termsize",
 ]

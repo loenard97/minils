@@ -9,4 +9,5 @@ edition = "2021"
 atty = "0.2.14"
 clap = { version = "4.2.7", features = ["derive"] }
 colorama = "0.1.0"
+cliform = { path = "../cliform" }
 termsize = "0.1.6"

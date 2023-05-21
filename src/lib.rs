@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use atty::Stream;
 use clap::Parser;
 use colorama::Colored;
+use cliform::{Grid, Tree, TreeStyle};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about)]
@@ -33,7 +34,7 @@ impl Config {
         let args = Args::parse();
         
         let dir_name = args.dir_name.unwrap_or(String::from("./"));
-        let pretty_print = atty::is(Stream::Stdout) && args.pretty_print.is_none() || args.pretty_print.unwrap_or_default();
+        let pretty_print = atty::is(Stream::Stdout) && args.pretty_print.unwrap_or_default();
         let all = args.all;
         let long = args.long;
         let tree = args.tree;
@@ -43,24 +44,13 @@ impl Config {
     }
 }
 
-struct FileInfo {
-    name: String,
-    size: usize,
-}
-
-impl FileInfo {
-    fn new(dir_entry: &DirEntry) -> Self {
-        let metadata = fs::metadata(dir_entry.path()).unwrap();
-
-        let name = String::from(dir_entry.file_name().to_str().unwrap());
-
-        FileInfo { name, size: 0 }
-    }
-}
-
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
+
+    let mut output = String::new();
+
     let paths = fs::read_dir(config.dir_name.clone()).unwrap();
     let n_items = fs::read_dir(config.dir_name.clone()).unwrap().count();
+    let n_cols: usize = termsize::get().unwrap().cols.into();
 
     let path_filter = if config.all {
         |_: &Result<DirEntry, std::io::Error>| { true }
@@ -72,32 +62,54 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         }
     };
 
+    // head
     if config.pretty_print {
-        println!("{}", head(&config.dir_name));
+        output.push_str(&format!("  Directory {}\n", config.dir_name.to_string().style("bold")));
+        output.push_str(&format!("{}", "─".repeat(n_cols)));
     }
 
-    for (i, path) in paths.filter(path_filter).enumerate() {
-        let is_last = i == n_items;
+    if !config.long && !config.tree {
+        // grid
+        let mut grid = Grid::new(2, 100);
 
-        // let dir_entry = path.unwrap();
-        // let file_info = FileInfo::new(&dir_entry);
+        for entry in paths.filter(path_filter) {
+            let file_name = entry.unwrap().file_name().to_str().unwrap().to_string();
+            grid.push(file_name);
+        }
 
-        // let path = dir_entry.path();
-        // let line = path.to_str().unwrap().trim_matches(|c| c == '.' || c == '/');
-        println!("{}", body(config, &path.unwrap().path(), 0, is_last));
+        output.push_str(&grid.to_string());
+
+    } else if config.long {
+        // list
+        let mut list = String::new();
+    
+        for entry in paths.filter(path_filter) {
+            let file_name = entry.unwrap().file_name();
+            list.push_str(file_name.to_str().unwrap());
+            list.push('\n');
+        }
+    
+        output.push_str(&list);
+        
+    } else if config.tree {
+        // tree
+        let mut tree = Tree::new();
+    
+        for (i, entry) in paths.filter(path_filter).enumerate() {
+            let is_last = i == n_items;
+            let file_name = entry.unwrap().file_name();
+            tree.push(file_name.to_str().unwrap().to_string(), 0, is_last);
+        }
+    
+        output.push_str(&tree.to_string(TreeStyle::Lines));
+        
+    } else {
+        println!("other");
     }
+
+    println!("{}", output);
 
     Ok(())
-}
-
-fn head(file_name: &str) -> String {
-    let mut result = String::new();
-    let n_cols: usize = termsize::get().unwrap().cols.into();
-
-    result.push_str(&format!("  Directory {}\n", file_name.to_string().style("bold")));
-    result.push_str(&format!("{}", "─".repeat(n_cols)));
-
-    result
 }
 
 fn body(config: &Config, path: &PathBuf, depth: u8, is_last: bool) -> String {
@@ -118,9 +130,11 @@ fn body(config: &Config, path: &PathBuf, depth: u8, is_last: bool) -> String {
         result.push_str(&format!(" │ "));
     }
 
-    let s = format!("{}  {}", file_name, metadata.len());
-
-    result.push_str(&s);
+    if config.pretty_print {
+        result.push_str(&format!("{}  {}", file_name, metadata.len()));
+    } else {
+        
+    }
 
     result
 }

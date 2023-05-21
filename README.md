@@ -7,3 +7,10 @@ A small `ls` clone, with pretty printing
 ![](https://img.shields.io/github/repo-size/loenard97/minils?&style=for-the-badge&color=F74C00)
 
 </div>
+
+
+## ▶️ Usage
+```sh
+$ minils
+Cargo.lock  Cargo.toml  LICENSE  README.md  src  target
+```
