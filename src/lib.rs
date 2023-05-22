@@ -1,10 +1,14 @@
 use std::error::Error;
 use std::fs::{self, DirEntry};
-use std::path::PathBuf;
+
 use atty::Stream;
 use clap::Parser;
+use chrono::{DateTime, Local};
+
 use colorama::Colored;
-use cliform::{Grid, Tree, TreeStyle};
+use cliform::{Grid, Table, Tree, TreeStyle};
+
+mod util;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about)]
@@ -17,14 +21,21 @@ pub struct Args {
     #[arg(short, long)]
     pub tree: bool,
     #[arg(short, long)]
-    pub pretty_print: Option<bool>,
+    pub pretty_print: bool,
+}
+
+#[derive(PartialEq)]
+pub enum PrintConfig {
+    Grid,
+    List,
+    Table,
+    Tree,
 }
 
 pub struct Config {
     pub dir_name: String,
+    print_config: PrintConfig,
     pub all: bool,
-    pub long: bool,
-    pub tree: bool,
     pub pretty_print: bool,
     pub stdout_exists: bool,
 }
@@ -34,13 +45,15 @@ impl Config {
         let args = Args::parse();
         
         let dir_name = args.dir_name.unwrap_or(String::from("./"));
-        let pretty_print = atty::is(Stream::Stdout) && args.pretty_print.unwrap_or_default();
-        let all = args.all;
-        let long = args.long;
-        let tree = args.tree;
         let stdout_exists = atty::is(Stream::Stdout);
+        let pretty_print = stdout_exists && args.pretty_print;
+        let all = stdout_exists && args.all;
+        let mut print_config = PrintConfig::Grid;
+        if args.long { print_config = PrintConfig::Table; }
+        if args.tree { print_config = PrintConfig::Tree; }
+        if !stdout_exists { print_config = PrintConfig::List; }
 
-        Config { dir_name, all, long, tree, pretty_print, stdout_exists }
+        Config { dir_name, all, print_config, pretty_print, stdout_exists }
     }
 }
 
@@ -68,8 +81,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         output.push_str(&format!("{}", "─".repeat(n_cols)));
     }
 
-    if !config.long && !config.tree {
-        // grid
+    if config.print_config == PrintConfig::Grid {
         let mut grid = Grid::new(2, 100);
 
         for entry in paths.filter(path_filter) {
@@ -79,20 +91,38 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
 
         output.push_str(&grid.to_string());
 
-    } else if config.long {
-        // list
-        let mut list = String::new();
-    
+    } else if config.print_config == PrintConfig::Table {
+        let mut table: Table<String> = Table::new();
+        table.header(vec![String::from("Last modified"), String::from("Size"), String::from("Name")]);
+        let mut entry_info: Vec<String> = Vec::new();
+
         for entry in paths.filter(path_filter) {
-            let file_name = entry.unwrap().file_name();
-            list.push_str(file_name.to_str().unwrap());
-            list.push('\n');
+            entry_info.clear();
+
+            let entry = entry.unwrap();
+            let file_name = entry.file_name();
+            let file_path = file_name.to_str().unwrap().to_string();
+
+            let metadata = fs::metadata(file_name.clone()).unwrap();
+
+            let system_time = metadata.modified().unwrap();
+            let datetime: DateTime<Local> = system_time.into();
+            entry_info.push(datetime.format("%Y/%m/%d %H:%M").to_string());
+
+            if metadata.len() > 0 {
+                entry_info.push(util::file_size_to_string(metadata.len()));
+            } else {
+                entry_info.push("".to_string());
+            }
+
+            entry_info.push(file_path);
+
+            table.push(entry_info.clone());
         }
-    
-        output.push_str(&list);
+
+        output.push_str(&table.to_string(2));
         
-    } else if config.tree {
-        // tree
+    } else if config.print_config == PrintConfig::Tree {
         let mut tree = Tree::new();
     
         for (i, entry) in paths.filter(path_filter).enumerate() {
@@ -103,38 +133,23 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     
         output.push_str(&tree.to_string(TreeStyle::Lines));
         
+    } else if config.print_config == PrintConfig::List {
+        for entry in paths.filter(path_filter) {
+            let entry = entry.unwrap();
+            let file_name = entry.file_name();
+            let file_path = file_name.to_str().unwrap().to_string();
+            
+            output.push_str(&file_path);
+            output.push('\n');
+        }
+
+        output = output.trim_end_matches('\n').to_string();
+
     } else {
-        println!("other");
+        panic!("unhandled config");
     }
 
     println!("{}", output);
 
     Ok(())
-}
-
-fn body(config: &Config, path: &PathBuf, depth: u8, is_last: bool) -> String {
-    let file_name = path.file_name().unwrap().to_string_lossy();
-    let mut file_name: String = file_name.trim_end_matches(char::is_whitespace).into();
-    if path.is_dir() {
-        file_name = file_name.color("bright blue");
-    }
-
-    let metadata = fs::metadata(path).unwrap();
-
-    let mut result = String::new();
-
-    if config.pretty_print {
-        result.push_str("  ");
-    }
-    if config.pretty_print && config.tree {
-        result.push_str(&format!(" │ "));
-    }
-
-    if config.pretty_print {
-        result.push_str(&format!("{}  {}", file_name, metadata.len()));
-    } else {
-        
-    }
-
-    result
 }
