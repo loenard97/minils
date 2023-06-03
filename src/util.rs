@@ -1,6 +1,10 @@
 pub fn file_size_to_string(file_size: u64) -> String {
     let mut result = String::new();
 
+    if file_size == 0 {
+        return result
+    }
+
     if file_size > 1024 && file_size < u64::pow(1024, 2) {
         let size = file_size / 1024;
         result.push_str(&size.to_string());
